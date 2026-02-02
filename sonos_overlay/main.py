@@ -233,12 +233,22 @@ def run_overlay_server(state_info_json: str, config_json: str) -> None:
 
     def update_display(state: dict) -> None:
         action = state.get("action", "")
+        is_square_action = action in ["playpause", "next", "prev"]
+
+        # Resize window based on action type
+        if is_square_action:
+            new_width, new_height = SQUARE_SIZE, SQUARE_SIZE
+        else:
+            new_width, new_height = VOLUME_WIDTH, VOLUME_HEIGHT
+
+        new_x = (screen_frame.size.width - new_width) / 2
+        window.setFrame_display_(NSMakeRect(new_x, WINDOW_Y_OFFSET, new_width, new_height), True)
 
         if action in ["volume_up", "volume_down", "mute"]:
             volume = state.get("volume", 0)
             is_muted = state.get("muted", False)
             icon_label.setFont_(fa_font_small)
-            icon_label.setFrame_(NSMakeRect(0, 45, 300, 45))
+            icon_label.setFrame_(NSMakeRect(0, 45, VOLUME_WIDTH, 45))
             icon_label.setStringValue_(get_volume_icon(volume, is_muted))
             bar_bg.setHidden_(False)
             bar_fg.setHidden_(False)
@@ -246,14 +256,14 @@ def run_overlay_server(state_info_json: str, config_json: str) -> None:
         elif action == "playpause":
             playback_state = state.get("state", "PAUSED_PLAYBACK")
             icon_label.setFont_(fa_font)
-            icon_label.setFrame_(NSMakeRect(0, 36, 120, 48))
+            icon_label.setFrame_(NSMakeRect(0, 36, SQUARE_SIZE, 48))
             icon_label.setStringValue_(get_playback_icon(playback_state))
             bar_bg.setHidden_(True)
             bar_fg.setHidden_(True)
         elif action in ["next", "prev"]:
             icon = FA_ICONS["forward_step"] if action == "next" else FA_ICONS["backward_step"]
             icon_label.setFont_(fa_font)
-            icon_label.setFrame_(NSMakeRect(0, 36, 120, 48))
+            icon_label.setFrame_(NSMakeRect(0, 36, SQUARE_SIZE, 48))
             icon_label.setStringValue_(icon)
             bar_bg.setHidden_(True)
             bar_fg.setHidden_(True)

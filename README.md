@@ -13,7 +13,7 @@ brew install font-fontawesome karabiner-elements
 ```bash
 mkdir -p ~/.local/{bin,opt}
 python3 -m venv ~/.local/opt/sonos-ctl-overlay
-~/.local/opt/sonos-ctl-overlay/bin/pip install https://github.com/mietzen/sonos-ctl-overlay.git
+~/.local/opt/sonos-ctl-overlay/bin/pip install git+https://github.com/mietzen/sonos-ctl-overlay.git
 ln -s ~/.local/opt/sonos-ctl-overlay/bin/sonos-ctl-overlay ~/.local/bin/sonos-ctl-overlay
 echo 'PATH=$PATH:$HOME/.local/bin' >> ~/.zshrc
 ```
