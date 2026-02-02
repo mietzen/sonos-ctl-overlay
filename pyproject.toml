@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sonos-overlay"
+version = "1.0.0"
+description = "macOS-style overlay for Sonos speaker control"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.7"
+keywords = ["sonos", "overlay", "volume", "control", "macos", "karabiner"]
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: MacOS",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+
+dependencies = [
+    "PyQt5>=5.15.0",
+    "soco>=0.30.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=22.0.0",
+    "ruff>=0.0.0",
+]
+
+[project.scripts]
+sonos-overlay = "sonos_overlay.main:main"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/sonos-overlay"
+Repository = "https://github.com/yourusername/sonos-overlay"
+Issues = "https://github.com/yourusername/sonos-overlay/issues"
+
+[tool.setuptools]
+packages = ["sonos_overlay"]
+
+[tool.setuptools.package-data]
+sonos_overlay = ["*.otf"]
+
+[tool.black]
+line-length = 100
+target-version = ['py37']
+
+[tool.ruff]
+line-length = 100
+target-version = "py37"
