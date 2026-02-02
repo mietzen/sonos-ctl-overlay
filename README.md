@@ -65,32 +65,32 @@ Add to `~/.config/karabiner/assets/complex_modifications/sonos.json`:
       "manipulators": [
         {
           "type": "basic",
-          "from": {"key_code": "volume_up"},
+          "from": {"key_code": "F12"},
           "to": [{"shell_command": "~/.local/bin/sonos-ctl-overlay volume_up"}]
         },
         {
           "type": "basic",
-          "from": {"key_code": "volume_down"},
+          "from": {"key_code": "F11"},
           "to": [{"shell_command": "~/.local/bin/sonos-ctl-overlay volume_down"}]
         },
         {
           "type": "basic",
-          "from": {"key_code": "mute"},
+          "from": {"key_code": "F10"},
           "to": [{"shell_command": "~/.local/bin/sonos-ctl-overlay mute"}]
         },
         {
           "type": "basic",
-          "from": {"key_code": "play_or_pause"},
+          "from": {"key_code": "F8"},
           "to": [{"shell_command": "~/.local/bin/sonos-ctl-overlay playpause"}]
         },
         {
           "type": "basic",
-          "from": {"key_code": "fastforward"},
+          "from": {"key_code": "F9"},
           "to": [{"shell_command": "~/.local/bin/sonos-ctl-overlay next"}]
         },
         {
           "type": "basic",
-          "from": {"key_code": "rewind"},
+          "from": {"key_code": "F7"},
           "to": [{"shell_command": "~/.local/bin/sonos-ctl-overlay prev"}]
         }
       ]
