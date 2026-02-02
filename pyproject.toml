@@ -10,7 +10,7 @@ authors = [
     {name = "Your Name", email = "your.email@example.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 keywords = ["sonos", "overlay", "volume", "control", "macos", "karabiner"]
 license = {text = "MIT"}
 classifiers = [
@@ -18,26 +18,26 @@ classifiers = [
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: MacOS",
     "Topic :: Multimedia :: Sound/Audio",
 ]
 
 dependencies = [
-    "PyQt5>=5.15.0",
     "soco>=0.30.0",
+    "PyYAML>=6.0",
+    "pyobjc-framework-Cocoa>=9.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=9.0; sys_platform == 'darwin'",
+    "pyobjc-framework-CoreText>=9.0; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
-    "black>=22.0.0",
-    "ruff>=0.0.0",
+    "ruff>=0.4.0",
 ]
 
 [project.scripts]
@@ -54,10 +54,10 @@ packages = ["sonos_overlay"]
 [tool.setuptools.package-data]
 sonos_overlay = ["*.otf"]
 
-[tool.black]
-line-length = 100
-target-version = ['py37']
-
 [tool.ruff]
 line-length = 100
-target-version = "py37"
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
+ignore = ["E501"]

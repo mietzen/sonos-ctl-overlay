@@ -1,422 +1,411 @@
 #!/usr/bin/env python3
 """
-Sonos Control with Overlay
-Direct control using SoCo library with macOS-style overlay
-Non-blocking singleton pattern - can be called multiple times rapidly
+Sonos Control with Overlay.
+Direct control using SoCo library with macOS-style overlay.
+Non-blocking singleton pattern - can be called multiple times rapidly.
 """
 
-import sys
-import os
-import socket
+import atexit
+import contextlib
 import json
+import os
+import signal
+import socket
 import subprocess
+import sys
+
 import soco
-from pathlib import Path
 
-# Defer Qt imports until needed (after fork check)
-def get_qt_imports():
-    from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QProgressBar
-    from PyQt5.QtCore import Qt, QTimer, QSocketNotifier
-    from PyQt5.QtGui import QFont, QFontDatabase
-    return QApplication, QWidget, QVBoxLayout, QLabel, QProgressBar, Qt, QTimer, QSocketNotifier, QFont, QFontDatabase
+from .config import FA_ICONS, Config, hex_to_rgb, load_config
 
-from .config import (
-    FONT_AWESOME_PATH,
-    VOLUME_STEP,
-    OVERLAY_DURATION,
-    SOCKET_PATH,
-    FA_ICONS
-)
 
-# ============================================================================
-# SONOS CONTROL FUNCTIONS
-# ============================================================================
-
-def get_speaker(ip):
-    """Get speaker by IP address directly"""
+def get_speaker(ip: str) -> soco.SoCo | None:
+    """Get speaker by IP address directly."""
     try:
         return soco.SoCo(ip)
     except Exception as e:
         print(f"Error connecting to speaker at {ip}: {e}", file=sys.stderr)
         return None
 
-def get_volume_icon(volume, is_muted=False):
-    """Return appropriate Font Awesome icon based on volume level"""
+
+def get_volume_icon(volume: int, is_muted: bool = False) -> str:
+    """Return appropriate Font Awesome icon based on volume level."""
     if is_muted:
-        return FA_ICONS['volume_xmark']
-    elif volume == 0:
-        return FA_ICONS['volume_off']
-    elif volume < 33:
-        return FA_ICONS['volume_low']
-    else:
-        return FA_ICONS['volume_high']
+        return FA_ICONS["volume_xmark"]
+    if volume == 0:
+        return FA_ICONS["volume_off"]
+    if volume < 33:
+        return FA_ICONS["volume_low"]
+    return FA_ICONS["volume_high"]
 
-def get_playback_icon(state):
-    """Return appropriate Font Awesome icon for playback state"""
-    if state == 'PLAYING':
-        return FA_ICONS['play']
-    else:
-        return FA_ICONS['pause']
 
-def execute_action(speaker, action):
-    """Execute the Sonos command and return current state info"""
-    result = {'action': action}
+def get_playback_icon(state: str) -> str:
+    """Return appropriate Font Awesome icon for playback state."""
+    if state == "PLAYING":
+        return FA_ICONS["play"]
+    return FA_ICONS["pause"]
+
+
+def execute_action(speaker: soco.SoCo, action: str, volume_step: int) -> dict:
+    """Execute the Sonos command and return current state info."""
+    result = {"action": action}
     try:
-        if action == 'volume_up':
+        if action == "volume_up":
             current = speaker.volume
-            new_volume = min(100, current + VOLUME_STEP)
+            new_volume = min(100, current + volume_step)
             speaker.volume = new_volume
-            result['volume'] = new_volume
-            result['muted'] = speaker.mute
+            result["volume"] = new_volume
+            result["muted"] = speaker.mute
 
-        elif action == 'volume_down':
+        elif action == "volume_down":
             current = speaker.volume
-            new_volume = max(0, current - VOLUME_STEP)
+            new_volume = max(0, current - volume_step)
             speaker.volume = new_volume
-            result['volume'] = new_volume
-            result['muted'] = speaker.mute
+            result["volume"] = new_volume
+            result["muted"] = speaker.mute
 
-        elif action == 'mute':
+        elif action == "mute":
             current_mute = speaker.mute
             speaker.mute = not current_mute
-            result['volume'] = speaker.volume
-            result['muted'] = not current_mute
+            result["volume"] = speaker.volume
+            result["muted"] = not current_mute
 
-        elif action == 'playpause':
-            state = speaker.get_current_transport_info()['current_transport_state']
-            if state == 'PLAYING':
+        elif action == "playpause":
+            state = speaker.get_current_transport_info()["current_transport_state"]
+            if state == "PLAYING":
                 speaker.pause()
-                result['state'] = 'PAUSED_PLAYBACK'
+                result["state"] = "PAUSED_PLAYBACK"
             else:
                 speaker.play()
-                result['state'] = 'PLAYING'
+                result["state"] = "PLAYING"
 
-        elif action == 'next':
+        elif action == "next":
             speaker.next()
-            result['state'] = 'PLAYING'
+            result["state"] = "PLAYING"
 
-        elif action == 'prev':
+        elif action == "prev":
             speaker.previous()
-            result['state'] = 'PLAYING'
+            result["state"] = "PLAYING"
 
     except Exception as e:
         print(f"Error executing action: {e}", file=sys.stderr)
 
     return result
 
-# ============================================================================
-# OVERLAY WIDGET (created only when running as server)
-# ============================================================================
 
-def create_overlay_class():
-    """Factory to create overlay class with Qt imports"""
-    QApplication, QWidget, QVBoxLayout, QLabel, QProgressBar, Qt, QTimer, QSocketNotifier, QFont, QFontDatabase = get_qt_imports()
+def run_overlay_server(state_info_json: str, config_json: str) -> None:
+    """Run overlay using native macOS APIs - no focus stealing."""
+    from AppKit import (
+        NSApplication,
+        NSApplicationActivationPolicyProhibited,
+        NSBackingStoreBuffered,
+        NSColor,
+        NSFont,
+        NSMakeRect,
+        NSScreen,
+        NSTextField,
+        NSTimer,
+        NSView,
+        NSWindow,
+        NSWindowStyleMaskBorderless,
+    )
+    from CoreText import CTFontManagerRegisterFontsForURL, kCTFontManagerScopeProcess
+    from Foundation import NSURL, NSFileHandle, NSNotificationCenter
 
-    class SonosOverlay(QWidget):
-        def __init__(self):
-            super().__init__()
-            self.close_timer = None
-            self.server_socket = None
-            self.socket_notifier = None
-            self.fa_family = None
-            self.QTimer = QTimer
-            self.QSocketNotifier = QSocketNotifier
-            self.QFont = QFont
-            self.Qt = Qt
-            self.QLabel = QLabel
-            self.QProgressBar = QProgressBar
-            self.QVBoxLayout = QVBoxLayout
-            self.init_ui_base(QFontDatabase)
+    state_info = json.loads(state_info_json)
+    config_data = json.loads(config_json)
 
-        def init_ui_base(self, QFontDatabase):
-            """Initialize the base UI without content"""
-            Qt = self.Qt
-            # Window flags for overlay
-            self.setWindowFlags(
-                Qt.FramelessWindowHint |
-                Qt.WindowStaysOnTopHint |
-                Qt.Tool |
-                Qt.X11BypassWindowManagerHint
-            )
-            self.setAttribute(Qt.WA_TranslucentBackground)
+    # Reconstruct style from config
+    style = config_data["style"]
+    font_path = config_data["font_path"]
+    socket_path = config_data["socket_path"]
 
-            # Load Font Awesome
-            font_id = QFontDatabase.addApplicationFont(FONT_AWESOME_PATH)
-            if font_id == -1:
-                alt_paths = [
-                    str(Path.home() / ".fonts/FontAwesome6Free-Solid-900.otf"),
-                    "/usr/share/fonts/truetype/font-awesome/FontAwesome6Free-Solid-900.otf",
-                ]
-                for alt_path in alt_paths:
-                    font_id = QFontDatabase.addApplicationFont(alt_path)
-                    if font_id != -1:
-                        break
+    # Parse style settings
+    bg_r, bg_g, bg_b = hex_to_rgb(style["background_color"])
+    bg_opacity = style["background_opacity"]
+    fg_r, fg_g, fg_b = hex_to_rgb(style["font_color"])
+    corner_radius = style["corner_radius"]
+    duration_ms = style["duration_ms"]
 
-                if font_id == -1:
-                    print(f"Warning: Could not load Font Awesome from {FONT_AWESOME_PATH}", file=sys.stderr)
-                    self.fa_family = "Arial"
-                else:
-                    fa_families = QFontDatabase.applicationFontFamilies(font_id)
-                    self.fa_family = fa_families[0] if fa_families else "Arial"
-            else:
-                fa_families = QFontDatabase.applicationFontFamilies(font_id)
-                self.fa_family = fa_families[0] if fa_families else "Arial"
+    # Prevent app from appearing in dock or stealing focus
+    app = NSApplication.sharedApplication()
+    app.setActivationPolicy_(NSApplicationActivationPolicyProhibited)
 
-            # Styling
-            self.setStyleSheet("""
-                QWidget {
-                    background-color: rgba(44, 44, 44, 230);
-                    border-radius: 12px;
-                }
-            """)
-            self.setFixedSize(300, 100)
+    # Load Font Awesome
+    fa_font = None
+    if os.path.exists(font_path):
+        font_url = NSURL.fileURLWithPath_(font_path)
+        CTFontManagerRegisterFontsForURL(font_url, kCTFontManagerScopeProcess, None)
+        for font_name in [
+            "Font Awesome 6 Free Solid",
+            "FontAwesome6Free-Solid",
+            "Font Awesome 6 Free",
+        ]:
+            fa_font = NSFont.fontWithName_size_(font_name, 48)
+            if fa_font:
+                break
 
-            # Position at lower-mid of screen
-            self.position_overlay()
+    if not fa_font:
+        fa_font = NSFont.boldSystemFontOfSize_(48)
 
-        def position_overlay(self):
-            """Position overlay at lower-mid of screen"""
-            from PyQt5.QtWidgets import QApplication
-            screen = QApplication.desktop().screenGeometry()
-            x = (screen.width() - self.width()) // 2
-            y = screen.height() - self.height() - 150  # 150px from bottom
-            self.move(x, y)
+    fa_font_small = NSFont.fontWithName_size_(fa_font.fontName(), 36)
+    if not fa_font_small:
+        fa_font_small = NSFont.boldSystemFontOfSize_(36)
 
-        def update_display(self, state_info):
-            """Update the overlay display with new state"""
-            # Clear existing layout
-            if self.layout():
-                while self.layout().count():
-                    item = self.layout().takeAt(0)
-                    if item.widget():
-                        item.widget().deleteLater()
-            else:
-                layout = self.QVBoxLayout()
-                layout.setContentsMargins(25, 20, 25, 20)
-                layout.setSpacing(10)
-                self.setLayout(layout)
+    # Determine window size based on action type
+    action = state_info.get("action", "")
+    is_square = action in ["playpause", "next", "prev"]
 
-            action = state_info.get('action', '')
+    screen = NSScreen.mainScreen()
+    screen_frame = screen.frame()
 
-            if action in ['volume_up', 'volume_down', 'mute']:
-                self.show_volume_overlay(state_info)
-            elif action == 'playpause':
-                self.show_playback_overlay(state_info)
-            elif action in ['next', 'prev']:
-                self.show_track_overlay(state_info)
+    if is_square:
+        width, height = 120, 120
+    else:
+        width, height = 300, 100
 
-            # Reset close timer
-            if self.close_timer:
-                self.close_timer.stop()
-            self.close_timer = self.QTimer()
-            self.close_timer.setSingleShot(True)
-            self.close_timer.timeout.connect(self.hide_overlay)
-            self.close_timer.start(OVERLAY_DURATION)
+    x = (screen_frame.size.width - width) / 2
+    y = 150
 
-            self.show()
-            self.raise_()
+    window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+        NSMakeRect(x, y, width, height),
+        NSWindowStyleMaskBorderless,
+        NSBackingStoreBuffered,
+        False,
+    )
+    window.setLevel_(2000)
+    window.setOpaque_(False)
+    window.setBackgroundColor_(NSColor.clearColor())
+    window.setIgnoresMouseEvents_(True)
+    window.setHasShadow_(False)
 
-        def hide_overlay(self):
-            """Hide the overlay"""
-            self.hide()
+    # Create content view with rounded corners and background color
+    content_view = window.contentView()
+    content_view.setWantsLayer_(True)
+    content_view.layer().setBackgroundColor_(
+        NSColor.colorWithCalibratedRed_green_blue_alpha_(bg_r, bg_g, bg_b, bg_opacity).CGColor()
+    )
+    content_view.layer().setCornerRadius_(corner_radius)
+    content_view.layer().setMasksToBounds_(True)
 
-        def show_volume_overlay(self, state_info):
-            """Show volume control overlay"""
-            volume = state_info.get('volume', 0)
-            is_muted = state_info.get('muted', False)
+    # Font color
+    font_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(fg_r, fg_g, fg_b, 1.0)
 
-            layout = self.layout()
+    # Icon label
+    icon_label = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 35, width, 55))
+    icon_label.setBezeled_(False)
+    icon_label.setDrawsBackground_(False)
+    icon_label.setEditable_(False)
+    icon_label.setSelectable_(False)
+    icon_label.setTextColor_(font_color)
+    icon_label.setFont_(fa_font)
+    icon_label.setAlignment_(1)
+    content_view.addSubview_(icon_label)
 
-            # Icon
-            icon_text = get_volume_icon(volume, is_muted)
-            icon = self.QLabel(icon_text)
-            icon.setFont(self.QFont(self.fa_family, 36))
-            icon.setAlignment(self.Qt.AlignCenter)
-            icon.setStyleSheet("color: white; background: transparent;")
-            layout.addWidget(icon)
+    # Progress bar background (for volume)
+    bar_bg = NSView.alloc().initWithFrame_(NSMakeRect(25, 20, 250, 8))
+    bar_bg.setWantsLayer_(True)
+    bar_bg.layer().setBackgroundColor_(
+        NSColor.colorWithCalibratedRed_green_blue_alpha_(fg_r, fg_g, fg_b, 0.25).CGColor()
+    )
+    bar_bg.layer().setCornerRadius_(4)
+    bar_bg.setHidden_(is_square)
+    content_view.addSubview_(bar_bg)
 
-            # Progress bar
-            progress = self.QProgressBar()
-            progress.setValue(volume)
-            progress.setTextVisible(False)
-            progress.setFixedHeight(8)
-            progress.setStyleSheet("""
-                QProgressBar {
-                    border: none;
-                    border-radius: 4px;
-                    background-color: rgba(255, 255, 255, 0.25);
-                }
-                QProgressBar::chunk {
-                    background-color: white;
-                    border-radius: 4px;
-                }
-            """)
-            layout.addWidget(progress)
+    # Progress bar foreground
+    bar_fg = NSView.alloc().initWithFrame_(NSMakeRect(25, 20, 0, 8))
+    bar_fg.setWantsLayer_(True)
+    bar_fg.layer().setBackgroundColor_(
+        NSColor.colorWithCalibratedRed_green_blue_alpha_(fg_r, fg_g, fg_b, 1.0).CGColor()
+    )
+    bar_fg.layer().setCornerRadius_(4)
+    bar_fg.setHidden_(is_square)
+    content_view.addSubview_(bar_fg)
 
-        def show_playback_overlay(self, state_info):
-            """Show playback control overlay - icon only"""
-            state = state_info.get('state', 'PAUSED_PLAYBACK')
+    # State to track
+    overlay_state = {"hide_timer": None, "idle_timer": None}
 
-            layout = self.layout()
+    def update_display(state: dict) -> None:
+        action = state.get("action", "")
 
-            # Icon - show current state (play icon when playing, pause when paused)
-            icon_text = get_playback_icon(state)
-            icon = self.QLabel(icon_text)
-            icon.setFont(self.QFont(self.fa_family, 48))
-            icon.setAlignment(self.Qt.AlignCenter)
-            icon.setStyleSheet("color: white; background: transparent;")
-            layout.addWidget(icon)
+        if action in ["volume_up", "volume_down", "mute"]:
+            volume = state.get("volume", 0)
+            is_muted = state.get("muted", False)
+            icon_label.setFont_(fa_font_small)
+            icon_label.setFrame_(NSMakeRect(0, 45, 300, 45))
+            icon_label.setStringValue_(get_volume_icon(volume, is_muted))
+            bar_bg.setHidden_(False)
+            bar_fg.setHidden_(False)
+            bar_fg.setFrame_(NSMakeRect(25, 20, 250 * volume / 100, 8))
+        elif action == "playpause":
+            playback_state = state.get("state", "PAUSED_PLAYBACK")
+            icon_label.setFont_(fa_font)
+            icon_label.setFrame_(NSMakeRect(0, 36, 120, 48))
+            icon_label.setStringValue_(get_playback_icon(playback_state))
+            bar_bg.setHidden_(True)
+            bar_fg.setHidden_(True)
+        elif action in ["next", "prev"]:
+            icon = FA_ICONS["forward_step"] if action == "next" else FA_ICONS["backward_step"]
+            icon_label.setFont_(fa_font)
+            icon_label.setFrame_(NSMakeRect(0, 36, 120, 48))
+            icon_label.setStringValue_(icon)
+            bar_bg.setHidden_(True)
+            bar_fg.setHidden_(True)
 
-        def show_track_overlay(self, state_info):
-            """Show track skip overlay - icon only"""
-            action = state_info.get('action', 'next')
-            icon_text = FA_ICONS['forward_step'] if action == 'next' else FA_ICONS['backward_step']
+        # Cancel existing hide timer
+        if overlay_state["hide_timer"]:
+            overlay_state["hide_timer"].invalidate()
 
-            layout = self.layout()
+        # Show window and set hide timer
+        window.orderFrontRegardless()
 
-            # Icon only
-            icon = self.QLabel(icon_text)
-            icon.setFont(self.QFont(self.fa_family, 48))
-            icon.setAlignment(self.Qt.AlignCenter)
-            icon.setStyleSheet("color: white; background: transparent;")
-            layout.addWidget(icon)
+        def hide_window() -> None:
+            window.orderOut_(None)
 
-        def setup_server(self):
-            """Setup Unix socket server for receiving commands"""
-            # Remove old socket if exists
-            try:
-                os.unlink(SOCKET_PATH)
-            except OSError:
-                pass
+        overlay_state["hide_timer"] = NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
+            duration_ms / 1000.0, False, lambda t: hide_window()
+        )
 
-            self.server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-            self.server_socket.bind(SOCKET_PATH)
-            self.server_socket.setblocking(False)
+        # Reset idle timer
+        if overlay_state["idle_timer"]:
+            overlay_state["idle_timer"].invalidate()
+        overlay_state["idle_timer"] = NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
+            10.0, False, lambda t: app.terminate_(None)
+        )
 
-            # Use Qt socket notifier for async socket handling
-            self.socket_notifier = self.QSocketNotifier(
-                self.server_socket.fileno(),
-                self.QSocketNotifier.Read
-            )
-            self.socket_notifier.activated.connect(self.handle_socket_data)
+    # Setup socket server
+    server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    with contextlib.suppress(OSError):
+        os.unlink(socket_path)
+    server_socket.bind(socket_path)
+    server_socket.setblocking(False)
 
-        def handle_socket_data(self):
-            """Handle incoming data on the socket"""
-            try:
-                data = self.server_socket.recv(4096)
-                if data:
-                    msg = json.loads(data.decode())
-                    self.update_display(msg)
-            except Exception as e:
-                print(f"Error handling socket data: {e}", file=sys.stderr)
+    # Socket notification handling
+    file_handle = NSFileHandle.alloc().initWithFileDescriptor_(server_socket.fileno())
 
-        def cleanup(self):
-            """Cleanup socket on exit"""
-            if self.server_socket:
-                self.server_socket.close()
-            try:
-                os.unlink(SOCKET_PATH)
-            except OSError:
-                pass
+    def handle_socket_data(_notification: object) -> None:
+        try:
+            data = server_socket.recv(4096)
+            if data:
+                msg = json.loads(data.decode())
+                update_display(msg)
+        except Exception:
+            pass
+        file_handle.waitForDataInBackgroundAndNotify()
 
-    return SonosOverlay, QApplication, QTimer
+    NSNotificationCenter.defaultCenter().addObserverForName_object_queue_usingBlock_(
+        "NSFileHandleDataAvailableNotification",
+        file_handle,
+        None,
+        handle_socket_data,
+    )
+    file_handle.waitForDataInBackgroundAndNotify()
 
-# ============================================================================
-# CLIENT/SERVER COMMUNICATION
-# ============================================================================
+    # Show initial state
+    update_display(state_info)
 
-def send_to_server(state_info):
-    """Send state info to running overlay server"""
+    # Cleanup on exit
+    def cleanup() -> None:
+        server_socket.close()
+        with contextlib.suppress(OSError):
+            os.unlink(socket_path)
+
+    atexit.register(cleanup)
+
+    def sigterm_handler(_signum: int, _frame: object) -> None:
+        cleanup()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, sigterm_handler)
+
+    # Run the app
+    app.run()
+
+
+def send_to_server(state_info: dict, socket_path: str) -> bool:
+    """Send state info to running overlay server."""
     try:
         client = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-        client.sendto(json.dumps(state_info).encode(), SOCKET_PATH)
+        client.sendto(json.dumps(state_info).encode(), socket_path)
         client.close()
         return True
     except (ConnectionRefusedError, FileNotFoundError, OSError):
-        # Server not running or stale socket - clean up
-        try:
-            os.unlink(SOCKET_PATH)
-        except OSError:
-            pass
+        with contextlib.suppress(OSError):
+            os.unlink(socket_path)
         return False
 
-# ============================================================================
-# MAIN
-# ============================================================================
 
-def run_overlay_server(state_info_json):
-    """Run the overlay server (called in subprocess)"""
-    state_info = json.loads(state_info_json)
-
-    SonosOverlay, QApplication, QTimer = create_overlay_class()
-
-    app = QApplication(sys.argv)
-    overlay = SonosOverlay()
-    overlay.setup_server()
-    overlay.update_display(state_info)
-
-    # Cleanup on exit
-    app.aboutToQuit.connect(overlay.cleanup)
-
-    # Auto-quit after longer idle (no commands for 10 seconds)
-    idle_timer = QTimer()
-    idle_timer.setSingleShot(True)
-    idle_timer.timeout.connect(app.quit)
-    idle_timer.start(10000)
-
-    # Reset idle timer when overlay is updated
-    original_update = overlay.update_display
-    def update_with_idle_reset(si):
-        original_update(si)
-        idle_timer.start(10000)
-    overlay.update_display = update_with_idle_reset
-
-    app.exec_()
+def config_to_dict(config: Config) -> dict:
+    """Convert config to JSON-serializable dict for subprocess."""
+    return {
+        "font_path": config.font_path,
+        "socket_path": config.socket_path,
+        "style": {
+            "background_color": config.style.background_color,
+            "background_opacity": config.style.background_opacity,
+            "font_color": config.style.font_color,
+            "corner_radius": config.style.corner_radius,
+            "duration_ms": config.style.duration_ms,
+        },
+    }
 
 
-def main():
+def main() -> None:
+    """Main entry point."""
+    config = load_config()
+
     # Check if running as overlay server (internal mode)
-    if len(sys.argv) >= 3 and sys.argv[1] == '--server':
-        run_overlay_server(sys.argv[2])
+    if len(sys.argv) >= 4 and sys.argv[1] == "--server":
+        run_overlay_server(sys.argv[2], sys.argv[3])
         return
 
-    if len(sys.argv) < 3:
-        print("Usage: sonos-overlay <speaker_ip> <action>", file=sys.stderr)
-        print("Actions: volume_up, volume_down, mute, playpause, next, prev", file=sys.stderr)
+    # Parse CLI arguments
+    valid_actions = ["volume_up", "volume_down", "mute", "playpause", "next", "prev"]
+
+    if len(sys.argv) == 2:
+        # Just action provided, use IP from config
+        action = sys.argv[1]
+        speaker_ip = config.speaker_ip
+    elif len(sys.argv) == 3:
+        # IP and action provided
+        speaker_ip = sys.argv[1]
+        action = sys.argv[2]
+    else:
+        print("Usage: sonos-overlay <action>", file=sys.stderr)
+        print("       sonos-overlay <speaker_ip> <action>", file=sys.stderr)
+        print(f"Actions: {', '.join(valid_actions)}", file=sys.stderr)
+        print("\nSet speaker_ip in ~/.sonos-overlay.yml to omit IP from CLI", file=sys.stderr)
         sys.exit(1)
 
-    speaker_ip = sys.argv[1]
-    action = sys.argv[2]
+    if not speaker_ip:
+        print("Error: No speaker IP provided", file=sys.stderr)
+        print("Set speaker_ip in ~/.sonos-overlay.yml or pass as argument", file=sys.stderr)
+        sys.exit(1)
 
-    # Validate action
-    valid_actions = ['volume_up', 'volume_down', 'mute', 'playpause', 'next', 'prev']
     if action not in valid_actions:
         print(f"Invalid action: {action}", file=sys.stderr)
         print(f"Valid actions: {', '.join(valid_actions)}", file=sys.stderr)
         sys.exit(1)
 
-    # Get speaker by IP
     speaker = get_speaker(speaker_ip)
     if not speaker:
         sys.exit(1)
 
-    # Execute action and get state
-    state_info = execute_action(speaker, action)
+    state_info = execute_action(speaker, action, config.volume_step)
 
-    # Try to send to existing server
-    if send_to_server(state_info):
-        # Successfully sent to existing overlay
+    if send_to_server(state_info, config.socket_path):
         sys.exit(0)
 
-    # Spawn subprocess to run overlay (non-blocking)
+    # Start new overlay server
     state_json = json.dumps(state_info)
+    config_json = json.dumps(config_to_dict(config))
     subprocess.Popen(
-        [sys.executable, '-m', 'sonos_overlay', '--server', state_json],
+        [sys.executable, "-m", "sonos_overlay", "--server", state_json, config_json],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        start_new_session=True
+        start_new_session=True,
     )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
