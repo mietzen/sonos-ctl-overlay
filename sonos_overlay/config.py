@@ -1,6 +1,6 @@
 """
-Configuration loader for Sonos Overlay.
-Loads settings from ~/.sonos-overlay.yml with sensible defaults.
+Configuration loader for Sonos Control Overlay.
+Loads settings from ~/.sonos-ctl-overlay.yml with sensible defaults.
 """
 
 import os
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-CONFIG_PATH = Path.home() / ".sonos-overlay.yml"
+CONFIG_PATH = Path.home() / ".sonos-ctl-overlay.yml"
 
 # Font Awesome Unicode characters
 FA_ICONS = {
@@ -44,7 +44,7 @@ class Config:
     font_path: str = field(
         default_factory=lambda: str(Path.home() / "Library/Fonts/Font Awesome 7 Free-Solid-900.otf")
     )
-    socket_path: str = "/tmp/sonos-overlay.sock"
+    socket_path: str = "/tmp/sonos-ctl-overlay.sock"
     style: OverlayStyle = field(default_factory=OverlayStyle)
 
 
@@ -95,28 +95,3 @@ def load_config() -> Config:
             config.style.duration_ms = int(style_data["duration_ms"])
 
     return config
-
-
-def create_default_config() -> str:
-    """Return example YAML config content."""
-    return """\
-# Sonos Overlay Configuration
-# Place this file at ~/.sonos-overlay.yml
-
-# Sonos speaker IP address (required)
-speaker_ip: "192.168.1.100"
-
-# Volume adjustment step (1-10)
-volume_step: 2
-
-# Path to Font Awesome font file
-font_path: "~/Library/Fonts/Font Awesome 7 Free-Solid-900.otf"
-
-# Overlay style settings
-style:
-  background_color: "#D6D6D7"
-  background_opacity: 0.5
-  font_color: "#000000"
-  corner_radius: 16
-  duration_ms: 1500
-"""

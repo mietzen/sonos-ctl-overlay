@@ -1,5 +1,5 @@
 """
-Sonos Overlay - macOS-style overlay for Sonos speaker control
+Sonos Control Overlay - macOS-style overlay for Sonos speaker control
 """
 
 __version__ = "1.0.0"

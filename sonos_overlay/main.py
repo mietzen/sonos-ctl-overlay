@@ -18,6 +18,12 @@ import soco
 
 from .config import FA_ICONS, Config, hex_to_rgb, load_config
 
+# Window dimensions
+SQUARE_SIZE = 120
+VOLUME_WIDTH = 300
+VOLUME_HEIGHT = 100
+WINDOW_Y_OFFSET = 150
+
 
 def get_speaker(ip: str) -> soco.SoCo | None:
     """Get speaker by IP address directly."""
@@ -160,12 +166,12 @@ def run_overlay_server(state_info_json: str, config_json: str) -> None:
     screen_frame = screen.frame()
 
     if is_square:
-        width, height = 120, 120
+        width, height = SQUARE_SIZE, SQUARE_SIZE
     else:
-        width, height = 300, 100
+        width, height = VOLUME_WIDTH, VOLUME_HEIGHT
 
     x = (screen_frame.size.width - width) / 2
-    y = 150
+    y = WINDOW_Y_OFFSET
 
     window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(x, y, width, height),
@@ -371,15 +377,15 @@ def main() -> None:
         speaker_ip = sys.argv[1]
         action = sys.argv[2]
     else:
-        print("Usage: sonos-overlay <action>", file=sys.stderr)
-        print("       sonos-overlay <speaker_ip> <action>", file=sys.stderr)
+        print("Usage: sonos-ctl-overlay <action>", file=sys.stderr)
+        print("       sonos-ctl-overlay <speaker_ip> <action>", file=sys.stderr)
         print(f"Actions: {', '.join(valid_actions)}", file=sys.stderr)
-        print("\nSet speaker_ip in ~/.sonos-overlay.yml to omit IP from CLI", file=sys.stderr)
+        print("\nSet speaker_ip in ~/.sonos-ctl-overlay.yml to omit IP from CLI", file=sys.stderr)
         sys.exit(1)
 
     if not speaker_ip:
         print("Error: No speaker IP provided", file=sys.stderr)
-        print("Set speaker_ip in ~/.sonos-overlay.yml or pass as argument", file=sys.stderr)
+        print("Set speaker_ip in ~/.sonos-ctl-overlay.yml or pass as argument", file=sys.stderr)
         sys.exit(1)
 
     if action not in valid_actions:

@@ -1,43 +1,60 @@
-# Sonos Overlay
+# Sonos Control Overlay
 
 A macOS-style volume overlay for controlling Sonos speakers with Karabiner.
 
 ## Installation
 
-### Prequisites
+### Prerequisites
 
 ```bash
-brew install font-fontawesome karabiner-element
+brew install font-fontawesome karabiner-elements
 ```
 
 ```bash
-# Install the package
-pip install -e .
+mkdir -p ~/.local/{bin,opt}
+python3 -m venv ~/.local/opt/sonos-ctl-overlay
+~/.local/opt/sonos-ctl-overlay/bin/pip install https://github.com/mietzen/sonos-ctl-overlay.git
+ln -s ~/.local/opt/sonos-ctl-overlay/bin/sonos-ctl-overlay ~/.local/bin/sonos-ctl-overlay
+echo 'PATH=$PATH:$HOME/.local/bin' >> ~/.zshrc
 ```
+
+## Configuration
+
+Create `~/.sonos-ctl-overlay.yml`:
+
+```yaml
+speaker_ip: "192.168.1.100"
+volume_step: 2
+font_path: "~/Library/Fonts/Font Awesome 7 Free-Solid-900.otf"
+
+style:
+  background_color: "#D6D6D7"
+  background_opacity: 0.8
+  font_color: "#000000"
+  corner_radius: 16
+  duration_ms: 1500
+```
+
+## Usage
 
 ### Command Line
 
-After installation, use the `sonos-overlay` command:
-
 ```bash
-# Volume controls
-sonos-overlay ${YOUR_SPEAKER_NAME} volume_up
-sonos-overlay ${YOUR_SPEAKER_NAME} volume_down
-sonos-overlay ${YOUR_SPEAKER_NAME} mute
+# With IP in config (recommended)
+sonos-ctl-overlay volume_up
+sonos-ctl-overlay volume_down
+sonos-ctl-overlay mute
+sonos-ctl-overlay playpause
+sonos-ctl-overlay next
+sonos-ctl-overlay prev
 
-# Playback controls
-sonos-overlay ${YOUR_SPEAKER_NAME} playpause
-sonos-overlay ${YOUR_SPEAKER_NAME} next
-sonos-overlay ${YOUR_SPEAKER_NAME} prev
-```
-
-Or run as a module:
-
-```bash
-python3 -m sonos_overlay volume_up
+# Or specify IP directly
+sonos-ctl-overlay 192.168.1.100 volume_up
 ```
 
 ### Karabiner Integration
+
+Add to `~/.config/karabiner/assets/complex_modifications/sonos.json`:
 
 ```json
 {
@@ -49,32 +66,32 @@ python3 -m sonos_overlay volume_up
         {
           "type": "basic",
           "from": {"key_code": "volume_up"},
-          "to": [{"shell_command": "sonos-overlay volume_up"}]
+          "to": [{"shell_command": "~/.local/bin/sonos-ctl-overlay volume_up"}]
         },
         {
           "type": "basic",
           "from": {"key_code": "volume_down"},
-          "to": [{"shell_command": "sonos-overlay volume_down"}]
+          "to": [{"shell_command": "~/.local/bin/sonos-ctl-overlay volume_down"}]
         },
         {
           "type": "basic",
           "from": {"key_code": "mute"},
-          "to": [{"shell_command": "sonos-overlay mute"}]
+          "to": [{"shell_command": "~/.local/bin/sonos-ctl-overlay mute"}]
         },
         {
           "type": "basic",
           "from": {"key_code": "play_or_pause"},
-          "to": [{"shell_command": "sonos-overlay playpause"}]
+          "to": [{"shell_command": "~/.local/bin/sonos-ctl-overlay playpause"}]
         },
         {
           "type": "basic",
           "from": {"key_code": "fastforward"},
-          "to": [{"shell_command": "sonos-overlay next"}]
+          "to": [{"shell_command": "~/.local/bin/sonos-ctl-overlay next"}]
         },
         {
           "type": "basic",
           "from": {"key_code": "rewind"},
-          "to": [{"shell_command": "sonos-overlay prev"}]
+          "to": [{"shell_command": "~/.local/bin/sonos-ctl-overlay prev"}]
         }
       ]
     }
@@ -82,4 +99,4 @@ python3 -m sonos_overlay volume_up
 }
 ```
 
-Enable in: Karabiner-Elements → Complex Modifications → Add rule
+Enable in: Karabiner-Elements > Complex Modifications > Add rule

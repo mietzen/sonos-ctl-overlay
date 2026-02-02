@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sonos Overlay - Entry point for -m execution
+Sonos Control Overlay - Entry point for -m execution
 """
 
 from .main import main

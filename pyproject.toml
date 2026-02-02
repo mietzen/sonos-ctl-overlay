@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sonos-overlay"
+name = "sonos-ctl-overlay"
 version = "1.0.0"
 description = "macOS-style overlay for Sonos speaker control"
 authors = [
@@ -41,12 +41,12 @@ dev = [
 ]
 
 [project.scripts]
-sonos-overlay = "sonos_overlay.main:main"
+sonos-ctl-overlay = "sonos_overlay.main:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/sonos-overlay"
-Repository = "https://github.com/yourusername/sonos-overlay"
-Issues = "https://github.com/yourusername/sonos-overlay/issues"
+Homepage = "https://github.com/yourusername/sonos-ctl-overlay"
+Repository = "https://github.com/yourusername/sonos-ctl-overlay"
+Issues = "https://github.com/yourusername/sonos-ctl-overlay/issues"
 
 [tool.setuptools]
 packages = ["sonos_overlay"]
