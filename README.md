@@ -2,7 +2,7 @@
 
 A macOS-style volume overlay for controlling Sonos speakers with Karabiner.
 
-![demo](https://github.com/mietzen/sonos-ctl-overlay/blob/mietzen-patch-1/demo.gif?raw=true)
+![demo](https://raw.githubusercontent.com/mietzen/sonos-ctl-overlay/refs/heads/main/demo.gif)
 
 
 ## Installation
